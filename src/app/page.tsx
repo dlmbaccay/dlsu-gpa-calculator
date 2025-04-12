@@ -330,7 +330,7 @@ export default function Home() {
                         value={course.grade.toString()}
                         onValueChange={(value) => updateCourse(course.id, "grade", parseFloat(value) || 0)}
                       >
-                        <SelectTrigger className={`font-semibold min-w-[80px] border-none shadow-none ${isCapturing ? 'no-chevron' : ''}`}>
+                        <SelectTrigger className={`cursor-pointer font-semibold min-w-[80px] border-none shadow-none ${isCapturing ? 'no-chevron' : ''}`}>
                           <SelectValue placeholder="Select grade" />
                         </SelectTrigger>
                         <SelectContent className="bg-[#F2F0EF]">
