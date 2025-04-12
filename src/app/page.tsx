@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner"
 import * as htmlToImage from 'html-to-image'
 import "./screenshot.css"
-  
+import Loading from "./loading"
 interface Course {
   id: number
   title: string
@@ -48,8 +48,14 @@ export default function Home() {
   const [recognition, setRecognition] = useState<string>("")
   const [isDownloading, setIsDownloading] = useState<boolean>(false)
   const [isCapturing, setIsCapturing] = useState<boolean>(false)
-  
+  const [isLoading, setIsLoading] = useState<boolean>(true)
   const cardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setTimeout(() => {
+      setIsLoading(false)
+    }, 1000)
+  }, [])
 
   // Initialize with 4 blank courses and calculate academic year
   useEffect(() => {
@@ -230,7 +236,7 @@ export default function Home() {
           link.href = dataUrl
           link.click()
           
-          toast.success('GPA Card downloaded successfully!')
+          toast.success('GPA downloaded successfully!')
           setIsDownloading(false)
           setIsCapturing(false)
           document.body.classList.remove('capturing-screenshot')
@@ -245,10 +251,14 @@ export default function Home() {
     }, 100)
   }, [gpa])
 
-  return (
+  if (isLoading) {
+    return <Loading />
+  }
+
+  if (!isLoading) return (
     <div className="flex flex-col justify-center items-center min-h-screen bg-[#F2F0EF] relative">
       <div className="w-full max-w-[90%] md:max-w-[80%] lg:max-w-[60%]">
-        <Card ref={cardRef} className="relative w-full min-h-[60%] bg-[#F2F0EF] shadow-md overflow-hidden">
+        <Card ref={cardRef} className="relative w-full bg-[#F2F0EF] shadow-md overflow-hidden">
           <CardHeader>
             <div className="flex justify-between items-start">
               <div className="flex flex-col gap-2">
@@ -382,7 +392,7 @@ export default function Home() {
       </div>
       
       {/* Footer positioned at the bottom right of the page */}
-      <div className={`absolute bottom-4 right-4 flex items-center gap-2 text-sm text-gray-500 ${isCapturing ? 'hidden' : ''}`}>
+      <div className={`absolute bottom-4 right-4 flex items-center gap-2 text-sm text-gray-500 font-semibold ${isCapturing ? 'hidden' : ''}`}>
         <span>Made by dlmbaccay</span>
         <a 
           href="https://github.com/dlmbaccay" 
