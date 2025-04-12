@@ -1,0 +1,31 @@
+/* Hide select dropdown chevrons when capturing screenshot */
+.capturing-screenshot .selectTrigger svg,
+.capturing-screenshot [data-slot="select-trigger"] svg,
+.capturing-screenshot [data-slot="select-trigger"] > [data-slot="select-icon"],
+.capturing-screenshot select + svg,
+.capturing-screenshot .select-chevron,
+.no-chevron svg {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* Hide any tooltips and popovers during screenshot */
+.capturing-screenshot [data-radix-popper-content-wrapper],
+.capturing-screenshot [role="tooltip"],
+.capturing-screenshot [data-slot="select-content"] {
+  display: none !important;
+}
+
+/* Additional styling for screenshot mode */
+.capturing-screenshot .border-none {
+  border: none !important;
+}
+
+/* Hide dropdown arrows in all browsers */
+.capturing-screenshot select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: none !important;
+} 
