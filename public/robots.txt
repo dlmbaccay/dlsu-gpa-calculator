@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://whats-my-dlsu-gpa.vercel.app/sitemap.xml 
