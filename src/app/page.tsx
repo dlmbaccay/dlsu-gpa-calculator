@@ -187,6 +187,8 @@ export default function Home() {
       setRecognition(recognitionText)
       setIsCalculating(false)
     }, 600) // Reduced delay for better responsiveness
+
+    toast.success("You can also download the GPA as an image!")
   }, [courses])
 
   // Memoized computed values
@@ -258,7 +260,7 @@ export default function Home() {
   if (!isLoading) return (
     <div className="flex flex-col justify-center items-center min-h-screen bg-[#F2F0EF] relative">
       <div className="w-full max-w-[90%] md:max-w-[80%] lg:max-w-[60%]">
-        <Card ref={cardRef} className="relative w-full bg-[#F2F0EF] shadow-md overflow-hidden">
+        <Card ref={cardRef} className={`relative w-full bg-[#F2F0EF] shadow-md overflow-hidden min-h-[730px] md:min-h-[700px] ${isCapturing ? 'min-h-fit' : ''}`}>
           <CardHeader>
             <div className="flex justify-between items-start">
               <div className="flex flex-col gap-2">
@@ -279,15 +281,6 @@ export default function Home() {
                 <Button variant="link" onClick={deleteAllCourses} title="Reset All Courses" className="hover:text-[#087830] cursor-pointer">
                   <RefreshCcw className="w-4 h-4" />
                 </Button>
-                <Button 
-                  variant="default" 
-                  onClick={addCourse} 
-                  className="bg-[#087830] text-white cursor-pointer" 
-                  title="Add Course"
-                  disabled={courses.length >= 8}
-                >
-                  <Plus className="w-8 h-8" />
-                </Button>
               </div>
             </div>
           </CardHeader>
@@ -295,15 +288,26 @@ export default function Home() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-1/2">Course</TableHead>
-                  <TableHead className="w-1/2">Units</TableHead>
+                  <TableHead className="min-w-[90px] md:min-w-[300px]">Course</TableHead>
+                  <TableHead className="w-fit">Units</TableHead>
                   <TableHead className="w-fit">Grade</TableHead>
+                  <TableHead className={`w-fit ${isCapturing ? 'hidden' : ''}`}>
+                    <Button 
+                      variant="link" 
+                      onClick={addCourse} 
+                      className="hover:text-[#087830] cursor-pointer" 
+                      title="Add Course"
+                      disabled={courses.length >= 8}
+                    > 
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {courses.map((course) => (
                   <TableRow key={course.id}>
-                    <TableCell className="w-1/2">
+                    <TableCell className="min-w-[90px] md:min-w-[300px]">
                       <Input
                         type="text"
                         className="border-none shadow-none font-semibold text-sm md:text-base"
@@ -312,7 +316,7 @@ export default function Home() {
                         onChange={(e) => updateCourse(course.id, "title", e.target.value)}
                       />
                     </TableCell>
-                    <TableCell className="w-1/2">
+                    <TableCell className="w-fit">
                       <Input
                         type="text"
                         placeholder="Units"
@@ -325,7 +329,7 @@ export default function Home() {
                         }}
                       />
                     </TableCell>
-                    <TableCell className="w-fit flex items-center">
+                    <TableCell className="w-fit">
                       <Select
                         value={course.grade.toString()}
                         onValueChange={(value) => updateCourse(course.id, "grade", parseFloat(value) || 0)}
@@ -341,6 +345,8 @@ export default function Home() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </TableCell>
+                    <TableCell className="w-fit"> 
                       <Button 
                         variant="link" 
                         size="sm" 
@@ -356,7 +362,9 @@ export default function Home() {
                 ))}
               </TableBody>
             </Table>
-            <div className={`flex flex-col md:flex-row md:justify-between justify-center md:items-center mt-8 gap-6`}>
+            <div className={`
+              ${isCapturing ? '' : 'absolute bottom-6 left-6 right-6'}
+              flex flex-col md:flex-row md:justify-between justify-center md:items-center mt-8 gap-6`}>
               <div className={`flex items-center h-8 text-sm md:text-base`}>
                 <p className="font-bold">
                   {isCalculating ? (
