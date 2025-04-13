@@ -14,19 +14,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DLSU GPA Calculator | De La Salle University Grade Calculator",
-  description: "Calculate your DLSU GPA with ease. Free, accurate De La Salle University grade calculator for students. Convert your DLSU grades to GPA instantly.",
-  keywords: ["DLSU GPA calculator", "DLSU grade calculator", "De La Salle University GPA", "DLSU grade computation", "La Salle grade calculator"],
+  title: "DLSU GPA Calculator | De La Salle University GPA Calculator",
+  description: "Calculate your DLSU GPA with ease. Free, accurate De La Salle University GPA calculator for students. Convert your DLSU GPAs to GPA instantly.",
+  keywords: ["DLSU GPA calculator", "DLSU GPA calculator", "De La Salle University GPA", "DLSU GPA computation", "La Salle GPA calculator"],
   openGraph: {
-    title: "DLSU GPA Calculator | De La Salle University Grade Calculator",
-    description: "Calculate your DLSU GPA with ease. Free, accurate De La Salle University grade calculator for students.",
+    title: "DLSU GPA Calculator | De La Salle University GPA Calculator",
+    description: "Calculate your DLSU GPA with ease. Free, accurate De La Salle University GPA calculator for students.",
     type: "website",
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "DLSU GPA Calculator | De La Salle University Grade Calculator",
-    description: "Calculate your DLSU GPA with ease. Free, accurate De La Salle University grade calculator for students.",
+    title: "DLSU GPA Calculator | De La Salle University GPA Calculator",
+    description: "Calculate your DLSU GPA with ease. Free, accurate De La Salle University GPA calculator for students.",
   },
   alternates: {
     canonical: "/",
