@@ -262,8 +262,8 @@ export default function Home() {
           <CardHeader>
             <div className="flex justify-between items-start">
               <div className="flex flex-col gap-2">
-                <CardTitle className="text-2xl text-[#087830] font-bold">DLSU GPA Calculator</CardTitle>
-                <CardDescription className="font-semibold text-black">{academicYear}</CardDescription>
+                <CardTitle className="md:text-2xl text-[#087830] font-bold">DLSU GPA Calculator</CardTitle>
+                <CardDescription className="md:text-base font-semibold text-black">{academicYear}</CardDescription>
                 <p className="text-sm text-gray-500 font-semibold">Total Units: {totalUnits}</p>
               </div>
               <div className={`flex gap-2 ${isCapturing ? 'hidden' : ''}`}>
@@ -271,7 +271,7 @@ export default function Home() {
                   variant="link" 
                   onClick={downloadImage} 
                   title="Download as Image"
-                  className="hover:text-[#087830] cursor-pointer"
+                  className="hover:text-[#087830] cursor-pointer -mr-2"
                   disabled={isDownloading || gpa === 0}
                 >
                   <Download className="w-4 h-4" />
@@ -286,7 +286,7 @@ export default function Home() {
                   title="Add Course"
                   disabled={courses.length >= 8}
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-8 h-8" />
                 </Button>
               </div>
             </div>
@@ -306,7 +306,7 @@ export default function Home() {
                     <TableCell className="w-1/2">
                       <Input
                         type="text"
-                        className="border-none shadow-none font-semibold"
+                        className="border-none shadow-none font-semibold text-sm md:text-base"
                         placeholder={`Course ${course.id} (Optional)`}
                         value={course.title}
                         onChange={(e) => updateCourse(course.id, "title", e.target.value)}
@@ -316,7 +316,7 @@ export default function Home() {
                       <Input
                         type="text"
                         placeholder="Units"
-                        className="border-none shadow-none font-semibold"
+                        className="border-none shadow-none font-semibold text-sm md:text-base"
                         value={course.units}
                         required
                         onChange={(e) => {
@@ -356,8 +356,8 @@ export default function Home() {
                 ))}
               </TableBody>
             </Table>
-            <div className={`flex justify-between items-center mt-12`}>
-              <div className={`absolute bottom-4 flex items-center h-8`}>
+            <div className={`flex flex-col md:flex-row md:justify-between justify-center md:items-center mt-8 gap-6`}>
+              <div className={`flex items-center h-8 text-sm md:text-base`}>
                 <p className="font-bold">
                   {isCalculating ? (
                     <span className="flex items-center gap-1">
@@ -370,17 +370,19 @@ export default function Home() {
                     </span>
                   ) : (
                     <span>
-                      Current GPA: <span className="text-[#087830]">{gpa.toFixed(3)}</span>
-                      {recognition && <span className="ml-2 text-[#087830]">({recognition})</span>}
+                      Current GPA: 
+                      <span className="block md:inline ml-1 text-[#087830]">{gpa.toFixed(3)}
+                      {recognition && <span className="ml-1 text-[#087830]">({recognition})</span>}
+                      </span>
                     </span>
                   )}
                 </p>
               </div>
-              <div className={`absolute bottom-4 right-4 flex items-center h-8 ${isCapturing ? 'hidden' : ''}`}>
+              <div className={`flex items-center h-8 ${isCapturing ? 'hidden' : ''}`}>
                 <Button 
                   onClick={calculateGPA} 
                   disabled={isCalculating || !isValid} 
-                  className="font-bold bg-[#087830] text-white cursor-pointer"
+                  className="font-bold bg-[#087830] text-white cursor-pointer w-full md:w-fit"
                   title="Calculate GPA"
                 >
                   {isCalculating ? "Calculating..." : "Calculate"}
