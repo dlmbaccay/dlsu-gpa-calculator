@@ -222,8 +222,8 @@ export default function Home() {
       const options = {
         quality: 0.95,
         backgroundColor: '#F2F0EF',
-        width: cardRef.current.offsetWidth,
-        height: cardRef.current.offsetHeight,
+        width: cardRef.current.scrollWidth,
+        height: cardRef.current.scrollHeight,
         style: {
           borderRadius: '8px',
           boxShadow: 'none',
@@ -260,7 +260,7 @@ export default function Home() {
   if (!isLoading) return (
     <div className="flex flex-col justify-center items-center min-h-screen bg-[#F2F0EF] relative">
       <div className="w-full max-w-[90%] md:max-w-[80%] lg:max-w-[60%]">
-        <Card ref={cardRef} className={`relative w-full bg-[#F2F0EF] shadow-md overflow-hidden min-h-[730px] md:min-h-[700px] ${isCapturing ? 'min-h-fit' : ''}`}>
+        <Card ref={cardRef} className={`relative w-full bg-[#F2F0EF] shadow-md overflow-hidden ${isCapturing ? 'min-h-0 md:min-h-0' : 'min-h-[730px] md:min-h-[700px]'}`}>
           <CardHeader>
             <div className="flex justify-between items-start">
               <div className="flex flex-col gap-2">
