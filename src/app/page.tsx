@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import * as htmlToImage from 'html-to-image'
+import Tesseract from 'tesseract.js'
 import "./screenshot.css"
 import Loading from "./loading"
 
@@ -90,8 +91,14 @@ export default function Home() {
   const cardRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const gridRef = useRef<HTMLDivElement | null>(null)
   const summaryRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [mode, setMode] = useState<"term" | "cgpa">("term")
   const [academicYear, setAcademicYear] = useState<string>("")
+  const [hasImportedFromOCR, setHasImportedFromOCR] = useState<boolean>(false)
+  const [isImportGuideOpen, setIsImportGuideOpen] = useState<boolean>(false)
+  const [skipImportGuide, setSkipImportGuide] = useState<boolean>(false)
+  const [isAccuracyDisclaimerOpen, setIsAccuracyDisclaimerOpen] = useState<boolean>(false)
+  const [skipAccuracyDisclaimer, setSkipAccuracyDisclaimer] = useState<boolean>(false)
 
   useEffect(() => {
     setTimeout(() => setIsLoading(false), 1000)
@@ -123,6 +130,14 @@ export default function Home() {
     setAcademicYear(academicYearStr)
   }, [])
 
+  useEffect(() => {
+    // Load user's preference for skipping the import guide
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem('skipImportGuide') : null
+    if (stored === 'true') setSkipImportGuide(true)
+    const stored2 = typeof window !== 'undefined' ? window.localStorage.getItem('skipAccuracyDisclaimer') : null
+    if (stored2 === 'true') setSkipAccuracyDisclaimer(true)
+  }, [])
+
   const createInitialCourses = useCallback((): Course[] => {
     return Array(4).fill(null).map((_, index) => ({
       id: index + 1,
@@ -134,7 +149,7 @@ export default function Home() {
 
   const computeTermStats = useCallback((courses: Course[]) => {
     const validUnits = courses.every(course => course.units !== "" && parseInt(course.units) > 0)
-    const validGrades = courses.every(course => course.grade !== 0)
+    const validGrades = courses.every(course => AVAILABLE_GRADES.includes(Number(course.grade)))
     if (!validUnits || !validGrades) {
       return { gpa: 0, recognition: "" }
     }
@@ -369,6 +384,176 @@ export default function Home() {
     }, 100)
   }, [cgpa])
 
+  const beginImportFlow = useCallback(() => {
+    if (skipImportGuide) {
+      fileInputRef.current?.click()
+    } else {
+      setIsImportGuideOpen(true)
+    }
+  }, [skipImportGuide])
+
+  const getAyTermSortKey = useCallback((title: string) => {
+    const m = title.match(/AY\s*(\d{4})-\d{4}\s*,?\s*Term\s*(\d+)/i)
+    if (!m) return { valid: false, yearStart: 0, term: 0 }
+    const yearStart = parseInt(m[1], 10) || 0
+    const term = parseInt(m[2], 10) || 0
+    return { valid: true, yearStart, term }
+  }, [])
+
+  const handleOcrUpload = useCallback(async (file: File) => {
+    try {
+      console.log('[OCR] Selected file:', { name: file.name, size: file.size, type: file.type })
+      const loadingId = toast.loading(`Importing ${file.name}… (0%)`)
+      const { data } = await Tesseract.recognize(file, 'eng', {
+        logger: (m) => {
+          console.log('[OCR][tesseract]', m)
+          const pct = typeof m.progress === 'number' ? Math.round(m.progress * 100) : null
+          if (pct !== null) {
+            toast.message(`Importing ${file.name}… (${pct}%)`, { id: loadingId })
+          }
+        },
+        // Use explicit CDN paths to avoid failed fetches in some environments
+        workerPath: 'https://unpkg.com/tesseract.js@v5/dist/worker.min.js',
+        corePath: 'https://unpkg.com/tesseract.js-core@v5.0.0/tesseract-core.wasm.js',
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0'
+      })
+      const text = (data.text || '').replace(/\t/g, ' ')
+      console.log('[OCR] Raw text length:', text.length)
+      console.log('[OCR] Raw text sample (first 1000 chars):\n', text.slice(0, 1000))
+      const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean)
+      console.log('[OCR] Line count:', lines.length)
+
+      // Collect sections from bottom to top using "Term GPA:" markers
+      const sections: string[][] = []
+      let current: string[] = []
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const l = lines[i]
+        if (/^Term\s*GPA:/i.test(l)) {
+          if (current.length) {
+            sections.push(current.slice().reverse())
+            console.log('[OCR] Closed section with', current.length, 'lines at index', i)
+            current = []
+          }
+        } else {
+          current.push(l)
+        }
+      }
+      if (current.length) {
+        sections.push(current.slice().reverse())
+        console.log('[OCR] Closed final section with', current.length, 'lines')
+      }
+
+      console.log('[OCR] Detected sections:', sections.length)
+      if (sections.length === 0) {
+        toast.error('Could not detect term sections. Please upload a clearer image.', { id: loadingId })
+        return
+      }
+
+      const allowedGradeNumbers = new Set([4.0,3.5,3.0,2.5,2.0,1.5,1.0,0.5,0.0])
+      console.log('[OCR] Starting parse across sections…')
+
+      const parsedTerms: Term[] = sections.map((sec, idx) => {
+        // Try to find a header like "AY 2024-2025, Term 2"
+        const header = sec.find(s => /^AY\s*\d{4}-\d{4}.*Term\s*\d/i.test(s))
+        const title = header ? header.match(/^AY\s*\d{4}-\d{4}.*Term\s*\d/i)?.[0] || header : `Imported Term ${idx + 1}`
+        console.log(`[OCR] Section ${idx + 1}: title=`, title, 'lines=', sec.length)
+
+        const courses: Course[] = []
+        let nextCourseId = 1
+        for (const row of sec) {
+          // Skip summary lines
+          if (/Cumulative\s*GPA:/i.test(row) || /Term\s*GPA:/i.test(row)) continue
+          // Skip non-graded rows (P/NGS etc.)
+          if (/\bP\b|NGS|N\/A/i.test(row)) continue
+
+          let workingRow = row
+          // If this row contains the term header and a course on the same line, strip the header part
+          if (/^AY\s*\d{4}-\d{4}.*Term\s*\d/i.test(workingRow)) {
+            workingRow = workingRow.replace(/^AY\s*\d{4}-\d{4}.*?Term\s*\d\s*/i, '').trim()
+            if (!workingRow) continue
+          }
+
+          // Extract last two numeric tokens (grade + units in any order)
+          const nums = (workingRow.match(/\d+(?:\.\d+)?/g) || [])
+          if (nums.length < 2) continue
+          const a = nums[nums.length - 2]
+          const b = nums[nums.length - 1]
+
+          let gradeStr: string | null = null
+          let unitsStr: string | null = null
+          const aNum = parseFloat(a)
+          const bNum = parseFloat(b)
+          if (allowedGradeNumbers.has(aNum) && /^\d+$/.test(b)) {
+            gradeStr = a
+            unitsStr = b
+          } else if (allowedGradeNumbers.has(bNum) && /^\d+$/.test(a)) {
+            gradeStr = b
+            unitsStr = a
+          }
+          if (!gradeStr || !unitsStr) continue
+          // If units is marked as P or equals 0, treat as non-academic load and skip
+          if (/^p$/i.test(unitsStr) || parseInt(unitsStr, 10) === 0) {
+            console.log('[OCR]   Skipping non-academic load row (units P/0):', workingRow)
+            continue
+          }
+
+          const titlePart = workingRow.replace(new RegExp(`${a}.*${b}$|${b}.*${a}$`), '').replace(/\s{2,}/g, ' ').trim()
+          const cleanedTitle = titlePart.replace(/^[-–•\s]+/, '')
+
+          const grade = parseFloat(gradeStr)
+          const units = unitsStr
+          if (Number.isNaN(grade) || !/^\d+$/.test(units)) continue
+
+          courses.push({ id: nextCourseId++, title: cleanedTitle || `Course ${nextCourseId - 1}`, units, grade })
+          console.log('[OCR]   Parsed course:', { title: cleanedTitle, units, grade })
+        }
+
+        const stats = computeTermStats(courses)
+        console.log(`[OCR] Section ${idx + 1} parsed courses=`, courses.length, 'gpa=', stats.gpa.toFixed(3), 'recognition=', stats.recognition)
+        return { id: 0, title, courses, nextCourseId, gpa: stats.gpa, recognition: stats.recognition, isCalculating: false }
+      }).filter(t => t.courses.length > 0)
+
+      console.log('[OCR] Parsed terms:', parsedTerms.map(t => ({ title: t.title, courses: t.courses.length, gpa: t.gpa })))
+      if (parsedTerms.length === 0) {
+        toast.error('No courses found. Please upload a clearer image.', { id: loadingId })
+        return
+      }
+
+      // Append parsed terms with guaranteed unique IDs. If this is the first import
+      // and there are default terms, drop them before appending.
+      setTerms(prev => {
+        const isProbablyDefault = prev.length <= 3 && prev.every(t => /^Term\s*\d+/i.test(t.title))
+        const base = (!hasImportedFromOCR && isProbablyDefault) ? [] : prev
+        const startId = base.length > 0 ? Math.max(...base.map(t => t.id)) + 1 : 1
+        const withIds = parsedTerms.map((t, idx) => ({ ...t, id: startId + idx }))
+        // Advance nextTermId beyond the highest ID we just assigned
+        setNextTermId(current => Math.max(current, startId + parsedTerms.length))
+        const merged = [...base, ...withIds]
+        // Sort by AY ascending and Term ascending if titles are in the expected format
+        merged.sort((a, b) => {
+          const ka = getAyTermSortKey(a.title)
+          const kb = getAyTermSortKey(b.title)
+          if (ka.valid && kb.valid) {
+            if (ka.yearStart !== kb.yearStart) return ka.yearStart - kb.yearStart
+            return ka.term - kb.term
+          }
+          // Leave relative order for non-matching titles
+          return 0
+        })
+        return merged
+      })
+      if (!hasImportedFromOCR) setHasImportedFromOCR(true)
+
+      toast.success(`Imported ${parsedTerms.length} term${parsedTerms.length > 1 ? 's' : ''}`, { id: loadingId })
+      if (!skipAccuracyDisclaimer) {
+        setIsAccuracyDisclaimerOpen(true)
+      }
+    } catch (e) {
+      console.error('[OCR] Failed:', e)
+      toast.error('OCR failed')
+    }
+  }, [computeTermStats, nextTermId])
+
   if (isLoading) {
     return <Loading />
   }
@@ -385,17 +570,38 @@ export default function Home() {
             {mode === 'term' ? (
               <CardDescription className="md:text-base font-semibold text-black">{academicYear}</CardDescription>
             ) : (
-              <CardDescription className="md:text-base font-semibold text-black">Add as many terms as you need. Each term has the same GPA table and units cap per course.</CardDescription>
+              <CardDescription className="md:text-base font-semibold text-black">
+                Track your college progress so far...
+              </CardDescription>
             )}
           </div>
-          <div className={`flex items-center gap-2 ${isCapturing ? 'hidden' : ''}`}>
+          <div className={`flex flex-col md:flex-row items-center gap-2 ${isCapturing ? 'hidden' : ''}`}>
             {mode === 'cgpa' && (
               <>
-                <Button onClick={addTerm} className="font-bold bg-[#087830] text-white cursor-pointer">Add Term</Button>
-                <Button onClick={() => downloadCgpaSummaryImage()} disabled={isDownloading} className="font-bold bg-[#087830] text-white cursor-pointer">Download</Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    const inputEl = e.currentTarget
+                    const files = inputEl.files ? Array.from(inputEl.files) : []
+                    // Clear immediately to avoid React synthetic event nulling
+                    inputEl.value = ''
+                    if (files.length) {
+                      for (const f of files) {
+                        await handleOcrUpload(f)
+                      }
+                    }
+                  }}
+                />
+                <Button onClick={beginImportFlow} className="w-full md:w-fit font-bold bg-[#087830] text-white cursor-pointer">Import from Image</Button>
+                <Button onClick={addTerm} className="w-full md:w-fit font-bold bg-[#087830] text-white cursor-pointer">Add Term</Button>
+                <Button onClick={() => downloadCgpaSummaryImage()} disabled={isDownloading} className="w-full md:w-fit font-bold bg-[#087830] text-white cursor-pointer">Download</Button>
               </>
             )}
-            <Button onClick={() => { if (mode === 'term') { ensureMinimumTerms(3) } setMode(m => m === 'term' ? 'cgpa' : 'term') }} variant="default" className="font-bold cursor-pointer bg-[#087830] text-white">
+            <Button onClick={() => { if (mode === 'term') { ensureMinimumTerms(3) } setMode(m => m === 'term' ? 'cgpa' : 'term') }} variant="default" className="w-full md:w-fit font-bold cursor-pointer bg-[#087830] text-white">
               {mode === 'term' ? 'Switch to CGPA Mode' : 'Switch to Term Mode'}
             </Button>
           </div>
@@ -427,7 +633,7 @@ export default function Home() {
                       )}
                       <p className="text-sm text-gray-500 font-semibold">Total Units: {totalUnits}</p>
                     </div>
-                    <div className={`flex gap-2 ${isCapturing ? 'hidden' : ''}`}>
+                    <div className={`flex gap-1 ${isCapturing ? 'hidden' : ''}`}>
                       <Button variant="link" onClick={() => resetTerm(term.id)} title="Reset Term" className="hover:text-[#087830] cursor-pointer">
                         <RefreshCcw className="w-4 h-4" />
                       </Button>
@@ -695,6 +901,68 @@ export default function Home() {
           </div>
         )}
       </div>
+
+      {isImportGuideOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white w-[92%] max-w-[720px] rounded-lg shadow-xl p-6">
+            <div className="flex items-start justify-between mb-4">
+              <h2 className="text-lg md:text-xl font-bold text-gray-900">Before you import</h2>
+              <button onClick={() => setIsImportGuideOpen(false)} className="text-gray-500 hover:text-gray-700">×</button>
+            </div>
+            <div className="space-y-3 text-sm md:text-base text-gray-700">
+              <p>For the best OCR results, upload screenshots term-by-term (frame by frame), not one long full-page image.</p>
+              <ul className="list-disc pl-5 space-y-2">
+                <li><span className="font-semibold">Zoom to 120–150%</span> so text is sharp and readable.</li>
+                <li>Crop the screenshot so it contains <span className="font-semibold">only one term</span> with its course rows.</li>
+                <li>Include the header line like <span className="font-mono">AY 2023-2024, Term 2</span> if visible.</li>
+                <li>Avoid including extra UI or borders; keep a tight crop around the table.</li>
+                <li>Ensure each row shows <span className="font-semibold">Course Code, Units, Grade</span> clearly.</li>
+                <li>Rows marked with <span className="font-mono">P</span> or unit <span className="font-mono">0</span> are ignored automatically (not academic load).</li>
+                <li>You can select and upload <span className="font-semibold">multiple images</span> at once; they will be appended to your terms.</li>
+              </ul>
+            </div>
+            <div className="mt-5 flex flex-col md:flex-row items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" checked={skipImportGuide} onChange={(e) => { setSkipImportGuide(e.target.checked); if (typeof window !== 'undefined') window.localStorage.setItem('skipImportGuide', e.target.checked ? 'true' : 'false') }} />
+                Don’t show this again
+              </label>
+              <div className="flex gap-2 w-full md:w-auto">
+                <Button onClick={() => setIsImportGuideOpen(false)} variant="secondary" className="w-full md:w-fit">Cancel</Button>
+                <Button onClick={() => { setIsImportGuideOpen(false); fileInputRef.current?.click() }} className="w-full md:w-fit bg-[#087830] text-white">I understand, continue</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAccuracyDisclaimerOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white w-[92%] max-w-[640px] rounded-lg shadow-xl p-6">
+            <div className="flex items-start justify-between mb-4">
+              <h2 className="text-lg md:text-xl font-bold text-gray-900">Please review your imported data</h2>
+              <button onClick={() => setIsAccuracyDisclaimerOpen(false)} className="text-gray-500 hover:text-gray-700">×</button>
+            </div>
+            <div className="space-y-3 text-sm md:text-base text-gray-700">
+              <p>OCR is not 100% accurate. Double‑check the following before relying on the results:</p>
+              <ul className="list-disc pl-5 space-y-2">
+                <li>Course codes match your transcript</li>
+                <li>Units are correct (no <span className="font-mono">P</span> or <span className="font-mono">0</span> counted)</li>
+                <li>Grades are correct, including any <span className="font-mono">0.0</span> entries</li>
+                <li>Terms are sorted by academic year and term as expected</li>
+              </ul>
+            </div>
+            <div className="mt-5 flex flex-col md:flex-row items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" checked={skipAccuracyDisclaimer} onChange={(e) => { setSkipAccuracyDisclaimer(e.target.checked); if (typeof window !== 'undefined') window.localStorage.setItem('skipAccuracyDisclaimer', e.target.checked ? 'true' : 'false') }} />
+                Don’t show this again
+              </label>
+              <div className="flex gap-2 w-full md:w-auto">
+                <Button onClick={() => setIsAccuracyDisclaimerOpen(false)} className="w-full md:w-fit bg-[#087830] text-white">Okay, I’ll review</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className={`absolute bottom-4 right-4 flex items-center gap-2 text-sm text-gray-500 font-semibold ${isCapturing ? 'hidden' : ''}`}>
         <span>Made by dlmbaccay</span>
