@@ -400,12 +400,57 @@ export default function Home() {
     return { valid: true, yearStart, term }
   }, [])
 
+  // Preprocess image to improve OCR on normal zoom screenshots
+  const loadImageElementFromFile = (file: File): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        // Revoke object URL after load to free memory
+        if (img.src.startsWith('blob:')) {
+          try { URL.revokeObjectURL(img.src) } catch (_) { /* noop */ }
+        }
+        resolve(img)
+      }
+      img.onerror = reject
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
+  const preprocessImageForOcr = async (file: File): Promise<HTMLCanvasElement> => {
+    const img = await loadImageElementFromFile(file)
+
+    const minimumTargetWidth = 1400
+    const minimumTargetHeight = 900
+    const scaleByWidth = minimumTargetWidth / (img.width || 1)
+    const scaleByHeight = minimumTargetHeight / (img.height || 1)
+    const autoScale = Math.max(1, Math.max(scaleByWidth, scaleByHeight))
+    const scale = Math.min(autoScale, 2.5)
+
+    const targetWidth = Math.max(1, Math.round((img.width || 1) * scale))
+    const targetHeight = Math.max(1, Math.round((img.height || 1) * scale))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = targetWidth
+    canvas.height = targetHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return canvas
+
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    // Enhance clarity: grayscale + contrast + slight brightness boost
+    ctx.filter = 'grayscale(100%) contrast(1.4) brightness(1.1)'
+    ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
+
+    return canvas
+  }
+
   const handleOcrUpload = useCallback(async (file: File) => {
     try {
       console.log('[OCR] Selected file:', { name: file.name, size: file.size, type: file.type })
       const loadingId = toast.loading(`Importing ${file.name}… (0%)`)
-      const { data } = await Tesseract.recognize(file, 'eng', {
-        logger: (m) => {
+      const preprocessedCanvas = await preprocessImageForOcr(file)
+      const ocrOptions: any = {
+        logger: (m: any) => {
           console.log('[OCR][tesseract]', m)
           const pct = typeof m.progress === 'number' ? Math.round(m.progress * 100) : null
           if (pct !== null) {
@@ -415,8 +460,14 @@ export default function Home() {
         // Use explicit CDN paths to avoid failed fetches in some environments
         workerPath: 'https://unpkg.com/tesseract.js@v5/dist/worker.min.js',
         corePath: 'https://unpkg.com/tesseract.js-core@v5.0.0/tesseract-core.wasm.js',
-        langPath: 'https://tessdata.projectnaptha.com/4.0.0'
-      })
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+        // OCR tuning
+        tessedit_pageseg_mode: 6, // Assume a uniform block of text
+        user_defined_dpi: '300',
+        preserve_interword_spaces: '1',
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.,:/() '
+      }
+      const { data } = await Tesseract.recognize(preprocessedCanvas, 'eng', ocrOptions)
       const text = (data.text || '').replace(/\t/g, ' ')
       console.log('[OCR] Raw text length:', text.length)
       console.log('[OCR] Raw text sample (first 1000 chars):\n', text.slice(0, 1000))
