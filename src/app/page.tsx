@@ -498,13 +498,16 @@ export default function Home() {
           }
 
           const titlePart = workingRow.replace(new RegExp(`${a}.*${b}$|${b}.*${a}$`), '').replace(/\s{2,}/g, ' ').trim()
-          const cleanedTitle = titlePart.replace(/^[-–•\s]+/, '')
+          const cleanedTitle = titlePart.replace(/^[−–•\s]+/, '')
+          // Extract course code only (leading code-like token). Fallback to first word if regex fails.
+          const codeMatch = cleanedTitle.match(/^[A-Z][A-Z0-9-]*/)
+          const courseCode = codeMatch ? codeMatch[0] : (cleanedTitle.split(/\s+/)[0] || cleanedTitle)
 
           const grade = parseFloat(gradeStr)
           const units = unitsStr
           if (Number.isNaN(grade) || !/^\d+$/.test(units)) continue
 
-          courses.push({ id: nextCourseId++, title: cleanedTitle || `Course ${nextCourseId - 1}`, units, grade })
+          courses.push({ id: nextCourseId++, title: courseCode || `Course ${nextCourseId - 1}`, units, grade })
           console.log('[OCR]   Parsed course:', { title: cleanedTitle, units, grade })
         }
 
