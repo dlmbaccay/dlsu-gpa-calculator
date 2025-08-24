@@ -99,6 +99,11 @@ export default function Home() {
   const [skipImportGuide, setSkipImportGuide] = useState<boolean>(false)
   const [isAccuracyDisclaimerOpen, setIsAccuracyDisclaimerOpen] = useState<boolean>(false)
   const [skipAccuracyDisclaimer, setSkipAccuracyDisclaimer] = useState<boolean>(false)
+  // Projected standings (what-if) state (CGPA mode)
+  const [targetHonorKey, setTargetHonorKey] = useState<'SUMMA_CUM_LAUDE' | 'MAGNA_CUM_LAUDE' | 'CUM_LAUDE' | 'HONORABLE_MENTION'>('CUM_LAUDE')
+  // Assumed grade fixed at 4.0 for projections
+  const targetAssumedGrade = 4.0
+  const [targetUnitsPerCourse, setTargetUnitsPerCourse] = useState<number>(3)
 
   useEffect(() => {
     setTimeout(() => setIsLoading(false), 1000)
@@ -289,7 +294,7 @@ export default function Home() {
 
   // No manual validation for calculate button anymore
 
-  const { cgpa, allUnits } = useMemo(() => {
+  const { cgpa, allUnits, weighted } = useMemo(() => {
     let weighted = 0
     let units = 0
     terms.forEach(t => {
@@ -299,7 +304,7 @@ export default function Home() {
         units += termUnits
       }
     })
-    return { cgpa: units ? weighted / units : 0, allUnits: units }
+    return { cgpa: units ? weighted / units : 0, allUnits: units, weighted }
   }, [terms, getTermTotalUnits])
 
   // CGPA recognition (Standing ...) shown regardless of number of terms, if all grades >= 1.0
@@ -312,6 +317,40 @@ export default function Home() {
     if (cgpa >= (CGPA_RECOGNITION as any).HONORABLE_MENTION.MIN_GPA) return `${(CGPA_RECOGNITION as any).HONORABLE_MENTION.LABEL} standing`
     return ""
   }, [terms, cgpa])
+
+  // Compute required number of additional courses to reach selected honor
+  const targetHonorResult = useMemo(() => {
+    const target = (CGPA_RECOGNITION as any)[targetHonorKey]
+    if (!target) return null
+    const targetMinGpa: number = target.MIN_GPA
+    const u = Math.max(1, Math.floor(Number(targetUnitsPerCourse) || 0))
+    const g = Number(targetAssumedGrade)
+
+    if (allUnits === 0) {
+      if (g >= targetMinGpa) {
+        const projected = g
+        return { coursesNeeded: 1, additionalUnits: u, projectedCgpa: projected, label: target.LABEL, targetMinGpa }
+      }
+      return { unreachable: true, reason: 'Assumed grade must be above target CGPA', label: target.LABEL, targetMinGpa }
+    }
+
+    if (cgpa >= targetMinGpa) {
+      return { coursesNeeded: 0, additionalUnits: 0, projectedCgpa: cgpa, label: target.LABEL, targetMinGpa }
+    }
+
+    if (g <= targetMinGpa) {
+      return { unreachable: true, reason: 'Assumed grade must be above target CGPA', label: target.LABEL, targetMinGpa }
+    }
+
+    const W = weighted
+    const U = allUnits
+    const numerator = targetMinGpa * U - W
+    const denom = u * (g - targetMinGpa)
+    const rawN = numerator / denom
+    const n = Math.max(0, Math.ceil(rawN))
+    const projected = (W + n * u * g) / (U + n * u)
+    return { coursesNeeded: n, additionalUnits: n * u, projectedCgpa: projected, label: target.LABEL, targetMinGpa }
+  }, [targetHonorKey, targetAssumedGrade, targetUnitsPerCourse, cgpa, allUnits, weighted])
 
   // Global calculation no longer needed; values update dynamically
 
@@ -810,6 +849,7 @@ export default function Home() {
             )
           })}
           </div>
+          
         </div>
         ) : (
           // Term GPA mode - show only the first term card, original layout
@@ -956,8 +996,66 @@ export default function Home() {
 
         {mode === 'cgpa' && (
           <div ref={summaryRef} className={`mt-8 ${isCapturing ? 'inline-block' : 'w-full'} p-4 rounded-md bg-white/60 border border-gray-200`}>
-            <p className="font-bold">Cumulative GPA (CGPA): <span className="text-[#087830]">{cgpa.toFixed(3)}</span>{cgpaRecognition && <span className="ml-2 text-[#087830]">({cgpaRecognition})</span>}</p>
-            <p className="text-sm text-gray-600">Across calculated terms • Total Units Counted: {allUnits}</p>
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+              <div className="flex-1 min-w-0">
+                <p className="font-bold">Cumulative GPA (CGPA): <span className="text-[#087830]">{cgpa.toFixed(3)}</span>{cgpaRecognition && <span className="ml-2 text-[#087830]">({cgpaRecognition})</span>}</p>
+                <p className="text-sm text-gray-600">Across calculated terms • Total Units Counted: {allUnits}</p>
+              </div>
+              <div className="flex-1 md:max-w-[60%]">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold">Projected Standings</p>
+                </div>
+                <div className="mt-2 flex flex-col md:flex-row gap-2 md:items-center">
+                  <Select value={targetHonorKey} onValueChange={(v) => setTargetHonorKey(v as any)}>
+                    <SelectTrigger className="min-w-[180px] font-semibold border-gray-300">
+                      <SelectValue placeholder="Select honor" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#F2F0EF]">
+                      <SelectItem value="HONORABLE_MENTION" className="bg-[#F2F0EF]">Honorable Mention</SelectItem>
+                      <SelectItem value="CUM_LAUDE" className="bg-[#F2F0EF]">Cum Laude</SelectItem>
+                      <SelectItem value="MAGNA_CUM_LAUDE" className="bg-[#F2F0EF]">Magna Cum Laude</SelectItem>
+                      <SelectItem value="SUMMA_CUM_LAUDE" className="bg-[#F2F0EF]">Summa Cum Laude</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Assumed grade</span>
+                    <span className="text-sm font-semibold">{targetAssumedGrade.toFixed(1)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Units/course</span>
+                    <Select value={targetUnitsPerCourse.toString()} onValueChange={(v) => setTargetUnitsPerCourse(parseInt(v))}>
+                      <SelectTrigger className="min-w-[100px] font-semibold border-gray-300">
+                        <SelectValue placeholder="Units" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#F2F0EF]">
+                        {[1,2,3,4,5,6].map((u) => (
+                          <SelectItem key={u} value={u.toString()} className="bg-[#F2F0EF]">{u}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-gray-800">
+                  {targetHonorResult ? (
+                    ('unreachable' in targetHonorResult) ? (
+                      <p className="text-red-600">
+                        Increase assumed grade to reach <span className="font-semibold">{targetHonorResult.label}</span> (≥ {targetHonorResult.targetMinGpa.toFixed(2)} CGPA).
+                      </p>
+                    ) : targetHonorResult.coursesNeeded === 0 ? (
+                      <p>
+                        Projected Standing: <span className="font-semibold">{targetHonorResult.label}</span> — already met.
+                      </p>
+                    ) : (
+                      <p>
+                        Projected Standing: <span className="font-semibold">{targetHonorResult.label}</span> • Need <span className="font-semibold">{targetHonorResult.coursesNeeded}</span> {targetUnitsPerCourse}-unit {targetHonorResult.coursesNeeded > 1 ? 'courses' : 'course'} at {targetAssumedGrade.toFixed(1)} • Projected CGPA: <span className="font-semibold text-[#087830]">{targetHonorResult.projectedCgpa.toFixed(3)}</span>
+                      </p>
+                    )
+                  ) : (
+                    <p>Select a target standing to see recommendations.</p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
