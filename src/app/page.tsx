@@ -970,15 +970,20 @@ export default function Home() {
               <button onClick={() => setIsImportGuideOpen(false)} className="text-gray-500 hover:text-gray-700">×</button>
             </div>
             <div className="space-y-3 text-sm md:text-base text-gray-700">
-              <p>For the best OCR results, upload screenshots term-by-term (frame by frame), not one long full-page image.</p>
+              <p>For the best OCR results, upload screenshots of your grades with clear text and minimal distractions.</p>
               <ul className="list-disc pl-5 space-y-2">
-                <li><span className="font-semibold">Zoom to 120–150%</span> so text is sharp and readable.</li>
-                <li>Crop the screenshot so it contains <span className="font-semibold">only one term</span> with its course rows.</li>
-                <li>Include the header line like <span className="font-mono">AY 2023-2024, Term 2</span> if visible.</li>
-                <li>Avoid including extra UI or borders; keep a tight crop around the table.</li>
-                <li>Ensure each row shows <span className="font-semibold">Course Code, Units, Grade</span> clearly.</li>
-                <li>Rows marked with <span className="font-mono">P</span> or unit <span className="font-mono">0</span> are ignored automatically (not academic load).</li>
-                <li>You can select and upload <span className="font-semibold">multiple images</span> at once; they will be appended to your terms.</li>
+                <li><span className="font-semibold">Keep zoom levels above 80%</span> so text is sharp and readable.</li>
+                <li>You may upload <span className="font-semibold">one term per screenshot</span>, 
+                    or <span className="font-semibold">multiple terms in a single screenshot</span> — both are supported.</li>
+                <li>If including multiple terms, make sure <span className="font-semibold">each term’s header line </span> 
+                    (e.g., <span className="font-mono">AY 2023-2024, Term 2</span>) is visible above its rows.</li>
+                <li>Avoid <span className="font-semibold">uploading the same term</span> across different screenshots.</li>
+                <li>Crop the screenshot to focus on the table of courses. Avoid extra UI or borders around it.</li>
+                <li>Ensure each row clearly shows <span className="font-semibold">Course Code, Units, Grade</span>.</li>
+                <li>Rows marked with a grade of <span className="font-mono">P</span>, a unit of <span className="font-mono">0</span>,  
+                    or courses with prefixes of <span className="font-mono">LCLS*, LASARE*, NSTP*</span> are ignored automatically (not counted as academic load).</li>
+                <li>You may select and upload <span className="font-semibold">multiple images at once</span>; 
+                    they will be appended to your terms.</li>
               </ul>
             </div>
             <div className="mt-5 flex flex-col md:flex-row items-center justify-between gap-3">
@@ -1003,12 +1008,12 @@ export default function Home() {
               <button onClick={() => setIsAccuracyDisclaimerOpen(false)} className="text-gray-500 hover:text-gray-700">×</button>
             </div>
             <div className="space-y-3 text-sm md:text-base text-gray-700">
-              <p>OCR is not 100% accurate. Double‑check the following before relying on the results:</p>
+              <p>OCR may not be 100% accurate. Double‑check the following before relying on the results:</p>
               <ul className="list-disc pl-5 space-y-2">
-                <li>Course codes match your transcript</li>
-                <li>Units are correct (no <span className="font-mono">P</span> or <span className="font-mono">0</span> counted)</li>
-                <li>Grades are correct, including any <span className="font-mono">0.0</span> entries</li>
-                <li>Terms are sorted by academic year and term as expected</li>
+                <li>Course codes match your transcript.</li>
+                <li>Units are correct (no <span className="font-mono">P</span> grade,  <span className="font-mono">0</span> unit, or <span className="font-mono">LCLS*, LASARE*, NSTP*</span> courses counted).</li>
+                <li>Grades are correct, including any <span className="font-mono">0.0</span> entries.</li>
+                <li>Terms are sorted by academic year and term as expected.</li>
               </ul>
             </div>
             <div className="mt-5 flex flex-col md:flex-row items-center justify-between gap-3">
