@@ -503,6 +503,12 @@ export default function Home() {
           const codeMatch = cleanedTitle.match(/^[A-Z][A-Z0-9-]*/)
           const courseCode = codeMatch ? codeMatch[0] : (cleanedTitle.split(/\s+/)[0] || cleanedTitle)
 
+          // Skip excluded course code prefixes: LCLS*, LASARE*, NSTP*
+          if (/^(LCLS|LASARE|NSTP)/i.test(courseCode)) {
+            console.log('[OCR]   Skipping non-academic course: ', courseCode, ' row= ', workingRow)
+            continue
+          }
+
           const grade = parseFloat(gradeStr)
           const units = unitsStr
           if (Number.isNaN(grade) || !/^\d+$/.test(units)) continue
