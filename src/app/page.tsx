@@ -306,10 +306,10 @@ export default function Home() {
   const cgpaRecognition = useMemo(() => {
     const allCoursesPassMinGrade = terms.every(t => t.courses.every(c => (c.grade ?? 0) >= 1.0))
     if (!allCoursesPassMinGrade) return ""
-    if (cgpa >= (CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.LABEL}`
-    if (cgpa >= (CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.LABEL}`
-    if (cgpa >= (CGPA_RECOGNITION as any).CUM_LAUDE.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).CUM_LAUDE.LABEL}`
-    if (cgpa >= (CGPA_RECOGNITION as any).HONORABLE_MENTION.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).HONORABLE_MENTION.LABEL}`
+    if (cgpa >= (CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.MIN_GPA) return `${(CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.LABEL} standing`
+    if (cgpa >= (CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.MIN_GPA) return `${(CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.LABEL} standing`
+    if (cgpa >= (CGPA_RECOGNITION as any).CUM_LAUDE.MIN_GPA) return `${(CGPA_RECOGNITION as any).CUM_LAUDE.LABEL} standing`
+    if (cgpa >= (CGPA_RECOGNITION as any).HONORABLE_MENTION.MIN_GPA) return `${(CGPA_RECOGNITION as any).HONORABLE_MENTION.LABEL} standing`
     return ""
   }, [terms, cgpa])
 
