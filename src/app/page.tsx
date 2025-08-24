@@ -302,9 +302,9 @@ export default function Home() {
     return { cgpa: units ? weighted / units : 0, allUnits: units }
   }, [terms, getTermTotalUnits])
 
-  // CGPA recognition (Standing ...) shown regardless of number of terms, if all grades >= 2.0
+  // CGPA recognition (Standing ...) shown regardless of number of terms, if all grades >= 1.0
   const cgpaRecognition = useMemo(() => {
-    const allCoursesPassMinGrade = terms.every(t => t.courses.every(c => (c.grade ?? 0) >= 2.0))
+    const allCoursesPassMinGrade = terms.every(t => t.courses.every(c => (c.grade ?? 0) >= 1.0))
     if (!allCoursesPassMinGrade) return ""
     if (cgpa >= (CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.LABEL}`
     if (cgpa >= (CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.LABEL}`
