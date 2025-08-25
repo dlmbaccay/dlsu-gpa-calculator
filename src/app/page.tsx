@@ -99,6 +99,11 @@ export default function Home() {
   const [skipImportGuide, setSkipImportGuide] = useState<boolean>(false)
   const [isAccuracyDisclaimerOpen, setIsAccuracyDisclaimerOpen] = useState<boolean>(false)
   const [skipAccuracyDisclaimer, setSkipAccuracyDisclaimer] = useState<boolean>(false)
+  // Projected standings (what-if) state (CGPA mode)
+  const [targetHonorKey, setTargetHonorKey] = useState<'SUMMA_CUM_LAUDE' | 'MAGNA_CUM_LAUDE' | 'CUM_LAUDE' | 'HONORABLE_MENTION'>('CUM_LAUDE')
+  // Assumed grade fixed at 4.0 for projections
+  const targetAssumedGrade = 4.0
+  const [targetUnitsPerCourse, setTargetUnitsPerCourse] = useState<number>(3)
 
   useEffect(() => {
     setTimeout(() => setIsLoading(false), 1000)
@@ -289,7 +294,7 @@ export default function Home() {
 
   // No manual validation for calculate button anymore
 
-  const { cgpa, allUnits } = useMemo(() => {
+  const { cgpa, allUnits, weighted } = useMemo(() => {
     let weighted = 0
     let units = 0
     terms.forEach(t => {
@@ -299,19 +304,53 @@ export default function Home() {
         units += termUnits
       }
     })
-    return { cgpa: units ? weighted / units : 0, allUnits: units }
+    return { cgpa: units ? weighted / units : 0, allUnits: units, weighted }
   }, [terms, getTermTotalUnits])
 
-  // CGPA recognition (Standing ...) shown regardless of number of terms, if all grades >= 2.0
+  // CGPA recognition (Standing ...) shown regardless of number of terms, if all grades >= 1.0
   const cgpaRecognition = useMemo(() => {
-    const allCoursesPassMinGrade = terms.every(t => t.courses.every(c => (c.grade ?? 0) >= 2.0))
+    const allCoursesPassMinGrade = terms.every(t => t.courses.every(c => (c.grade ?? 0) >= 1.0))
     if (!allCoursesPassMinGrade) return ""
-    if (cgpa >= (CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.LABEL}`
-    if (cgpa >= (CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.LABEL}`
-    if (cgpa >= (CGPA_RECOGNITION as any).CUM_LAUDE.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).CUM_LAUDE.LABEL}`
-    if (cgpa >= (CGPA_RECOGNITION as any).HONORABLE_MENTION.MIN_GPA) return `Standing ${(CGPA_RECOGNITION as any).HONORABLE_MENTION.LABEL}`
+    if (cgpa >= (CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.MIN_GPA) return `${(CGPA_RECOGNITION as any).SUMMA_CUM_LAUDE.LABEL} standing`
+    if (cgpa >= (CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.MIN_GPA) return `${(CGPA_RECOGNITION as any).MAGNA_CUM_LAUDE.LABEL} standing`
+    if (cgpa >= (CGPA_RECOGNITION as any).CUM_LAUDE.MIN_GPA) return `${(CGPA_RECOGNITION as any).CUM_LAUDE.LABEL} standing`
+    if (cgpa >= (CGPA_RECOGNITION as any).HONORABLE_MENTION.MIN_GPA) return `${(CGPA_RECOGNITION as any).HONORABLE_MENTION.LABEL} standing`
     return ""
   }, [terms, cgpa])
+
+  // Compute required number of additional courses to reach selected honor
+  const targetHonorResult = useMemo(() => {
+    const target = (CGPA_RECOGNITION as any)[targetHonorKey]
+    if (!target) return null
+    const targetMinGpa: number = target.MIN_GPA
+    const u = Math.max(1, Math.floor(Number(targetUnitsPerCourse) || 0))
+    const g = Number(targetAssumedGrade)
+
+    if (allUnits === 0) {
+      if (g >= targetMinGpa) {
+        const projected = g
+        return { coursesNeeded: 1, additionalUnits: u, projectedCgpa: projected, label: target.LABEL, targetMinGpa }
+      }
+      return { unreachable: true, reason: 'Assumed grade must be above target CGPA', label: target.LABEL, targetMinGpa }
+    }
+
+    if (cgpa >= targetMinGpa) {
+      return { coursesNeeded: 0, additionalUnits: 0, projectedCgpa: cgpa, label: target.LABEL, targetMinGpa }
+    }
+
+    if (g <= targetMinGpa) {
+      return { unreachable: true, reason: 'Assumed grade must be above target CGPA', label: target.LABEL, targetMinGpa }
+    }
+
+    const W = weighted
+    const U = allUnits
+    const numerator = targetMinGpa * U - W
+    const denom = u * (g - targetMinGpa)
+    const rawN = numerator / denom
+    const n = Math.max(0, Math.ceil(rawN))
+    const projected = (W + n * u * g) / (U + n * u)
+    return { coursesNeeded: n, additionalUnits: n * u, projectedCgpa: projected, label: target.LABEL, targetMinGpa }
+  }, [targetHonorKey, targetAssumedGrade, targetUnitsPerCourse, cgpa, allUnits, weighted])
 
   // Global calculation no longer needed; values update dynamically
 
@@ -400,12 +439,57 @@ export default function Home() {
     return { valid: true, yearStart, term }
   }, [])
 
+  // Preprocess image to improve OCR on normal zoom screenshots
+  const loadImageElementFromFile = (file: File): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        // Revoke object URL after load to free memory
+        if (img.src.startsWith('blob:')) {
+          try { URL.revokeObjectURL(img.src) } catch (_) { /* noop */ }
+        }
+        resolve(img)
+      }
+      img.onerror = reject
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
+  const preprocessImageForOcr = async (file: File): Promise<HTMLCanvasElement> => {
+    const img = await loadImageElementFromFile(file)
+
+    const minimumTargetWidth = 1400
+    const minimumTargetHeight = 900
+    const scaleByWidth = minimumTargetWidth / (img.width || 1)
+    const scaleByHeight = minimumTargetHeight / (img.height || 1)
+    const autoScale = Math.max(1, Math.max(scaleByWidth, scaleByHeight))
+    const scale = Math.min(autoScale, 2.5)
+
+    const targetWidth = Math.max(1, Math.round((img.width || 1) * scale))
+    const targetHeight = Math.max(1, Math.round((img.height || 1) * scale))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = targetWidth
+    canvas.height = targetHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return canvas
+
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    // Enhance clarity: grayscale + contrast + slight brightness boost
+    ctx.filter = 'grayscale(100%) contrast(1.4) brightness(1.1)'
+    ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
+
+    return canvas
+  }
+
   const handleOcrUpload = useCallback(async (file: File) => {
     try {
       console.log('[OCR] Selected file:', { name: file.name, size: file.size, type: file.type })
       const loadingId = toast.loading(`Importing ${file.name}… (0%)`)
-      const { data } = await Tesseract.recognize(file, 'eng', {
-        logger: (m) => {
+      const preprocessedCanvas = await preprocessImageForOcr(file)
+      const ocrOptions: any = {
+        logger: (m: any) => {
           console.log('[OCR][tesseract]', m)
           const pct = typeof m.progress === 'number' ? Math.round(m.progress * 100) : null
           if (pct !== null) {
@@ -415,8 +499,14 @@ export default function Home() {
         // Use explicit CDN paths to avoid failed fetches in some environments
         workerPath: 'https://unpkg.com/tesseract.js@v5/dist/worker.min.js',
         corePath: 'https://unpkg.com/tesseract.js-core@v5.0.0/tesseract-core.wasm.js',
-        langPath: 'https://tessdata.projectnaptha.com/4.0.0'
-      })
+        langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+        // OCR tuning
+        tessedit_pageseg_mode: 6, // Assume a uniform block of text
+        user_defined_dpi: '300',
+        preserve_interword_spaces: '1',
+        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.,:/() '
+      }
+      const { data } = await Tesseract.recognize(preprocessedCanvas, 'eng', ocrOptions)
       const text = (data.text || '').replace(/\t/g, ' ')
       console.log('[OCR] Raw text length:', text.length)
       console.log('[OCR] Raw text sample (first 1000 chars):\n', text.slice(0, 1000))
@@ -498,13 +588,22 @@ export default function Home() {
           }
 
           const titlePart = workingRow.replace(new RegExp(`${a}.*${b}$|${b}.*${a}$`), '').replace(/\s{2,}/g, ' ').trim()
-          const cleanedTitle = titlePart.replace(/^[-–•\s]+/, '')
+          const cleanedTitle = titlePart.replace(/^[−–•\s]+/, '')
+          // Extract course code only (leading code-like token). Fallback to first word if regex fails.
+          const codeMatch = cleanedTitle.match(/^[A-Z][A-Z0-9-]*/)
+          const courseCode = codeMatch ? codeMatch[0] : (cleanedTitle.split(/\s+/)[0] || cleanedTitle)
+
+          // Skip excluded course code prefixes: LCLS*, LASARE*, NSTP*
+          if (/^(LCLS|LASARE|NSTP)/i.test(courseCode)) {
+            console.log('[OCR]   Skipping non-academic course: ', courseCode, ' row= ', workingRow)
+            continue
+          }
 
           const grade = parseFloat(gradeStr)
           const units = unitsStr
           if (Number.isNaN(grade) || !/^\d+$/.test(units)) continue
 
-          courses.push({ id: nextCourseId++, title: cleanedTitle || `Course ${nextCourseId - 1}`, units, grade })
+          courses.push({ id: nextCourseId++, title: courseCode || `Course ${nextCourseId - 1}`, units, grade })
           console.log('[OCR]   Parsed course:', { title: cleanedTitle, units, grade })
         }
 
@@ -750,6 +849,7 @@ export default function Home() {
             )
           })}
           </div>
+          
         </div>
         ) : (
           // Term GPA mode - show only the first term card, original layout
@@ -896,8 +996,66 @@ export default function Home() {
 
         {mode === 'cgpa' && (
           <div ref={summaryRef} className={`mt-8 ${isCapturing ? 'inline-block' : 'w-full'} p-4 rounded-md bg-white/60 border border-gray-200`}>
-            <p className="font-bold">Cumulative GPA (CGPA): <span className="text-[#087830]">{cgpa.toFixed(3)}</span>{cgpaRecognition && <span className="ml-2 text-[#087830]">({cgpaRecognition})</span>}</p>
-            <p className="text-sm text-gray-600">Across calculated terms • Total Units Counted: {allUnits}</p>
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+              <div className="flex-1 min-w-0">
+                <p className="font-bold">Cumulative GPA (CGPA): <span className="text-[#087830]">{cgpa.toFixed(3)}</span>{cgpaRecognition && <span className="ml-2 text-[#087830]">({cgpaRecognition})</span>}</p>
+                <p className="text-sm text-gray-600">Across calculated terms • Total Units Counted: {allUnits}</p>
+              </div>
+              <div className="flex-1 md:max-w-[60%]">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold">Projected Standings</p>
+                </div>
+                <div className="mt-2 flex flex-col md:flex-row gap-2 md:items-center">
+                  <Select value={targetHonorKey} onValueChange={(v) => setTargetHonorKey(v as any)}>
+                    <SelectTrigger className="min-w-[180px] font-semibold border-gray-300">
+                      <SelectValue placeholder="Select honor" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-[#F2F0EF]">
+                      <SelectItem value="HONORABLE_MENTION" className="bg-[#F2F0EF]">Honorable Mention</SelectItem>
+                      <SelectItem value="CUM_LAUDE" className="bg-[#F2F0EF]">Cum Laude</SelectItem>
+                      <SelectItem value="MAGNA_CUM_LAUDE" className="bg-[#F2F0EF]">Magna Cum Laude</SelectItem>
+                      <SelectItem value="SUMMA_CUM_LAUDE" className="bg-[#F2F0EF]">Summa Cum Laude</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Assumed grade</span>
+                    <span className="text-sm font-semibold">{targetAssumedGrade.toFixed(1)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-600">Units/course</span>
+                    <Select value={targetUnitsPerCourse.toString()} onValueChange={(v) => setTargetUnitsPerCourse(parseInt(v))}>
+                      <SelectTrigger className="min-w-[100px] font-semibold border-gray-300">
+                        <SelectValue placeholder="Units" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-[#F2F0EF]">
+                        {[1,2,3,4,5,6].map((u) => (
+                          <SelectItem key={u} value={u.toString()} className="bg-[#F2F0EF]">{u}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-gray-800">
+                  {targetHonorResult ? (
+                    ('unreachable' in targetHonorResult) ? (
+                      <p className="text-red-600">
+                        Increase assumed grade to reach <span className="font-semibold">{targetHonorResult.label}</span> (≥ {targetHonorResult.targetMinGpa.toFixed(2)} CGPA).
+                      </p>
+                    ) : targetHonorResult.coursesNeeded === 0 ? (
+                      <p>
+                        Projected Standing: <span className="font-semibold">{targetHonorResult.label}</span> — already met.
+                      </p>
+                    ) : (
+                      <p>
+                        Projected Standing: <span className="font-semibold">{targetHonorResult.label}</span> • Need <span className="font-semibold">{targetHonorResult.coursesNeeded}</span> {targetUnitsPerCourse}-unit {targetHonorResult.coursesNeeded > 1 ? 'courses' : 'course'} at {targetAssumedGrade.toFixed(1)} • Projected CGPA: <span className="font-semibold text-[#087830]">{targetHonorResult.projectedCgpa.toFixed(3)}</span>
+                      </p>
+                    )
+                  ) : (
+                    <p>Select a target standing to see recommendations.</p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -910,15 +1068,20 @@ export default function Home() {
               <button onClick={() => setIsImportGuideOpen(false)} className="text-gray-500 hover:text-gray-700">×</button>
             </div>
             <div className="space-y-3 text-sm md:text-base text-gray-700">
-              <p>For the best OCR results, upload screenshots term-by-term (frame by frame), not one long full-page image.</p>
+              <p>For the best OCR results, upload screenshots of your grades with clear text and minimal distractions.</p>
               <ul className="list-disc pl-5 space-y-2">
-                <li><span className="font-semibold">Zoom to 120–150%</span> so text is sharp and readable.</li>
-                <li>Crop the screenshot so it contains <span className="font-semibold">only one term</span> with its course rows.</li>
-                <li>Include the header line like <span className="font-mono">AY 2023-2024, Term 2</span> if visible.</li>
-                <li>Avoid including extra UI or borders; keep a tight crop around the table.</li>
-                <li>Ensure each row shows <span className="font-semibold">Course Code, Units, Grade</span> clearly.</li>
-                <li>Rows marked with <span className="font-mono">P</span> or unit <span className="font-mono">0</span> are ignored automatically (not academic load).</li>
-                <li>You can select and upload <span className="font-semibold">multiple images</span> at once; they will be appended to your terms.</li>
+                <li><span className="font-semibold">Keep zoom levels above 80%</span> so text is sharp and readable.</li>
+                <li>You may upload <span className="font-semibold">one term per screenshot</span>, 
+                    or <span className="font-semibold">multiple terms in a single screenshot</span> — both are supported.</li>
+                <li>If including multiple terms, make sure <span className="font-semibold">each term’s header line </span> 
+                    (e.g., <span className="font-mono">AY 2023-2024, Term 2</span>) is visible above its rows.</li>
+                <li>Avoid <span className="font-semibold">uploading the same term</span> across different screenshots.</li>
+                <li>Crop the screenshot to focus on the table of courses. Avoid extra UI or borders around it.</li>
+                <li>Ensure each row clearly shows <span className="font-semibold">Course Code, Units, Grade</span>.</li>
+                <li>Rows marked with a grade of <span className="font-mono">P</span>, a unit of <span className="font-mono">0</span>,  
+                    or courses with prefixes of <span className="font-mono">LCLS*, LASARE*, NSTP*</span> are ignored automatically (not counted as academic load).</li>
+                <li>You may select and upload <span className="font-semibold">multiple images at once</span>; 
+                    they will be appended to your terms.</li>
               </ul>
             </div>
             <div className="mt-5 flex flex-col md:flex-row items-center justify-between gap-3">
@@ -943,12 +1106,12 @@ export default function Home() {
               <button onClick={() => setIsAccuracyDisclaimerOpen(false)} className="text-gray-500 hover:text-gray-700">×</button>
             </div>
             <div className="space-y-3 text-sm md:text-base text-gray-700">
-              <p>OCR is not 100% accurate. Double‑check the following before relying on the results:</p>
+              <p>OCR may not be 100% accurate. Double‑check the following before relying on the results:</p>
               <ul className="list-disc pl-5 space-y-2">
-                <li>Course codes match your transcript</li>
-                <li>Units are correct (no <span className="font-mono">P</span> or <span className="font-mono">0</span> counted)</li>
-                <li>Grades are correct, including any <span className="font-mono">0.0</span> entries</li>
-                <li>Terms are sorted by academic year and term as expected</li>
+                <li>Course codes match your transcript.</li>
+                <li>Units are correct (no <span className="font-mono">P</span> grade,  <span className="font-mono">0</span> unit, or <span className="font-mono">LCLS*, LASARE*, NSTP*</span> courses counted).</li>
+                <li>Grades are correct, including any <span className="font-mono">0.0</span> entries.</li>
+                <li>Terms are sorted by academic year and term as expected.</li>
               </ul>
             </div>
             <div className="mt-5 flex flex-col md:flex-row items-center justify-between gap-3">
